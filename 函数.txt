@@ -1,0 +1,284 @@
+================================================================
+记录各章所学的函数
+================================================================
+
+第2章
+
+KdPrint 打印输出字符串
+
+RtlGetVersion 获取版本信息
+
+================================================================
+
+第3章
+
+NT_SUCCESS 该宏用于判断状态值
+
+RtlInitUnicodeString	使用已有的C字符串指针初始化，此函数不分配内存
+
+RtlCopyUnicodeString	复制字符串，目标字符串先分配好内存
+
+RtlCompareUnicodeString	比较字符串，，大小写相关
+
+RtlEqualUnicodeString	比较字符串相等，大小写相关
+
+RtlAppendUnicodeStringToString	将UNICODE_STRING字符串附加到另一个
+
+RtlAppendUnicodeToString	将UNICODE_STRING字符串附加到C字符串之后
+
+ExAllocatePool	从内存池中分配内存，带有默认标记，过时了
+
+ExAllocatePoolWithTag	从内存池中分配内存，带有指明的标记
+
+ExAllocatePoolWithQuotaTag	从内存池中分配内存，带有指明的标记，并消耗当前进程的分配额度
+
+ExFreePool	释放分配的内存
+
+CONTAINING_RECORD 获得指向真正的数据结构的指针
+
+InitializeListHead 初始化链表头
+
+InsertHeadList	从链表头插入
+
+InsertTailList	从链表尾部插入
+
+IsListEmpty		判断链表是否为空
+
+RemoveHeadList	从链表头部删除
+
+RemoveTailList	从链表尾部删除
+
+RemoveEntryList	从链表中删除指定项
+
+ExInterlockedInsertHeadList	使用自旋锁，从链表头插入
+
+ExInterlockedInsertTailList	使用自旋锁，从链表尾插入
+
+ExInterlockedRemoveHeadList	使用自旋锁，从链表头删除
+
+IoGetDeviceObjectPointer 获取设备对象指针
+
+IoCreateDevice	创建设备对象
+
+
+================================================================
+
+第4章
+
+setPriorityClass	设置指定进程的优先级类
+
+SetThreadPriority	设置指定线程的优先级值
+
+DeviceIoControl	将控制代码直接发送到指定的设备驱动程序
+
+CTL_CODE	定义新的 I/O 控制代码
+
+IoCreateDevice	创建设备对象
+
+IoGetCurrentIrpStackLocation 指向指定 IRP 中调用方 I/O 堆栈位置的指针
+
+KeSetPriorityThread 设置线程的优先级
+
+PsLookupThreadByThreadId	通过线程ID获取，ETHREAD 结构的指针
+
+ObDereferenceObject	减少对象的引用计数
+
+================================================================
+
+第5章
+
+windbg命令
+
+!process 0 0  显示所有进程
+
+.process /i EPROCESS的地址
+
+!thread 显示附加后进程的所有线程信息
+
+lm 列出已加载的模块
+
+.reload /f modulename.dll  强制加载模块的符号
+
+k 显示当前线程的栈跟踪信息
+
+? 10 命令将数值转换成十进制
+
+? 0n10 查十六进制形式，0n前缀表示十进制数字
+
+!teb 显示当前线程的TEB
+
+!peb 查看PEB的内容
+
+dt  查看结构
+
+bp kernel32!createfilew 设置断点
+
+bl 列出已经存在的断点
+
+r rcx 查看寄存器的值
+
+db 命令以字节方式显示内存
+
+du 查看Unicode字符串
+
+u 显示反汇编代码
+
+!analyze -v 
+
+!running -t  命令用来列出崩溃时在所有处理器上运行的线程
+
+!stacks  命令默认列出所有线程的线程栈
+
+!irpfind 用于寻找IRP
+
+================================================================
+
+第6章
+
+!irql 查看处理器的当前IRQL
+
+!idt 查看系统中已注册的中断
+
+KeRaiseIrql 提升IRQL
+
+KeLowerIrql 还原IRQL
+
+KeGetCurrentIrql 获取当前IRQL
+
+KeInitializeDpc  初始化 DPC 对象
+
+KeInsertQueueDpc 将 DPC 排队等待执行
+
+KeInitializeTimer  初始化计时器对象
+
+KeSetTimer  定时启动DPC例程
+
+KeCancelTimer 停止DPC定时器
+
+QueueUserAPC 将用户模式 异步过程调用 (APC) 对象添加到指定线程的 APC 队列
+
+KeEnterCriticalRegion  进入关键区
+
+KeLeaveCriticalRegion  离开关键区
+
+KeEnterGuardedRegion 进入警戒区
+
+KeLeaveGuardedRegion 离开警戒区
+
+__try  开始一个可能产生异常的代码块
+
+__except	指明某个异常是否得到处理，如果处理则提供相应的处理代码
+
+__finally	用于提供保证会被执行的代码
+
+__leave		提供了从__try块中某个地方直接跳转到__finally块的一种优化机制
+
+ExRaiseStatus  触发异常
+
+ExRaiseAccessViolation  触发异常
+
+InterlockedIncrement / InterlockedIncrement16 / InterlockedIncrement64 对32/16/64位的整数原子化加1
+ 
+InterlockedDecrement / InterlockedDecrement16 / InterlockedDecrement64 对32/16/64位的整数原子化减1
+
+InterlockedAdd / InterlockedAdd64 原子化地将一个32/64位整数加到一个变量上
+
+InterlockedExchange / 8 / 16 / 64	原子化地交换两个 32/8/16/64位整数
+
+InterlockedCompareExchange / 64 /128 原子化比较一个变量与一个值，如果相等则将提供的值交换到变量中，否则，将当前的值放入变量中
+
+KeWaitForSingleObject 等待对象变成有信号
+
+KeWaitForMultipleObjects  等待多个对象变成有信号
+
+KeInitializeMutex	初始化互斥量
+
+KeReleaseMutex  释放该互斥量
+
+ExInitializeFastMutex  初始化快速互斥量
+
+ExAcquireFastMutex   获取快速互斥量
+
+ExAcquireFastMutexUnsafe   获取快速互斥量
+
+ExReleaseFastMutex  释放快速互斥量
+
+ExReleaseFastMutexUnsafe  释放快速互斥量
+
+KeInitializeSemaphore 初始化信号量，当其内部值大于零时，信号值处于有信号态。
+
+KeReleaseSemaphore 增加信号量的计数
+
+KeInitializeEvent 初始化事件（Notification或者Synchronization）
+
+KeSetEvent 设置事件为有信号
+
+KeResetEvent 重置该事件（无信号）
+
+KeClearEvent  重置该事件（无信号）
+
+ExInitializeResourceLite  初始化执行体资源
+
+ExAcquireResourceExclusiveLite 获取排他锁（用于写）
+
+ExAcquireResourceSharedLite  获取共享锁
+
+ExReleaseResourceList 释放执行体资源
+
+KeInitializeSpinLock  创建自旋锁
+
+KeAcquireSpinLock   获取自旋锁
+
+KeReleaseSpinLock   释放一个旋转锁
+
+PsCreateSystemThread   创建一个系统线程，该线程在内核模式下执行
+
+IoCreateSystemThread   创建一个系统线程，该线程在内核模式下执行
+
+PsTerminateSystemThread  
+
+IoAllocateWorkItem  分配和初始化工作项目
+
+IoFreeWorkItem  释放工作项目
+
+IoSizeofWorkItem  提供的大小动态分配一个IO_WORKITEM结构
+
+IoInitializeWorkItem  初始化调用方已分配的工作项
+
+IoUninitializeWorkItem  取消初始化由 IoInitializeWorkItem 初始化的工作项
+
+IoQueueWorkItem  将工作项目进行排队
+
+================================================================
+
+第7章
+
+IoAttachDeviceToDeviceStack 用于设备驱动程序之间的设备关联
+
+IoSkipCurrentIrpStackLocation  在处理 I/O 请求时跳过当前的 IRP（I/O Request Packet）堆栈位置
+
+IoCallDriver  向驱动程序发送 I/O 请求包（IRP）
+
+IoCopyCurrentIrpStackLocationToNext  将当前 IRP 的栈位置（IRP Stack Location）信息复制到下一个 IRP 栈位置。
+
+ioSetCompletionRoutine 注册 IoCompletion 例程，该例程将在下一个较低级别的驱动程序完成给定 IRP 的请求操作时调用。
+
+IoMarkIrpPending  标记指定的 IRP，指示驱动程序的调度例程随后返回STATUS_PENDING
+
+IoGetCurrentIrpStackLocation 获取当前 IRP（I/O 请求数据包）堆栈的位置
+
+MmGetSystemAddressForMdlSafe  用于获取与指定内存描述符列表（MDL，Memory Descriptor List）相关的系统地址
+
+MmProbeAndLockPages  处理内存页锁定和访问权限的验证
+
+MmUnlockPages  用于解锁之前通过 MmLockPages 锁定的内存页。
+
+================================================================
+
+================================================================
+
+================================================================
+
+================================================================
+
+================================================================
