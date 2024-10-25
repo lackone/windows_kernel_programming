@@ -275,6 +275,22 @@ MmUnlockPages  用于解锁之前通过 MmLockPages 锁定的内存页。
 
 =================================================================================================
 
+第8章
+
+PsSetCreateProcessNotifyRoutineEx  注册进程通知
+
+PsSetCreateProcessNotifyRoutineEx2
+
+KeQuerySystemTimePrecise  检索当前系统时间
+
+PsSetCreateThreadNotifyRoutine 注册线程通知
+
+PsRemoveCreateThreadNotifyRoutine 注销线程通知
+
+PsSetLoadImageNotifyRoutine  注册模块加载通知
+
+PsRemoveImageNotifyRoutine  注销模块加载通知
+
 =================================================================================================
 
 =================================================================================================
