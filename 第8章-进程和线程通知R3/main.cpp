@@ -115,7 +115,6 @@ void displayInfo(BYTE* buf, DWORD size)
 			std::wstring path((WCHAR*)(buf + info->pathOffset), info->pathLen);
 
 			printf("image load %d %ws base=%llx size=%llx \n", info->pid, path.c_str(), info->imageBase, info->imageSize);
-
 			break;
 		}
 		}
