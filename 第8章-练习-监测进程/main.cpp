@@ -40,7 +40,7 @@ VOID addNameToList(PWCH str, SIZE_T len)
 	memcpy(mem, str, len);
 
 	_wcsupr(mem);
-	
+
 	item->name = mem;
 
 	InsertTailList(&g_ProcessMon.head, &item->entry);
@@ -76,6 +76,7 @@ VOID delNameFromList(PWCH str)
 	if (find)
 	{
 		RemoveEntryList(find);
+		ExFreePoolWithTag(CONTAINING_RECORD(find, ProcessMonItem, entry), DRIVER_TAG);
 	}
 }
 
@@ -128,7 +129,7 @@ VOID ProcessNotify(
 	_Inout_ PEPROCESS Process,
 	_In_ HANDLE ProcessId,
 	_Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo
-	)
+)
 {
 	UP(Process);
 	if (CreateInfo)
@@ -268,6 +269,7 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 	PDEVICE_OBJECT devObj = NULL;
 	UNICODE_STRING devName = { 0 };
 	UNICODE_STRING linkName = { 0 };
+	BOOLEAN linkCreate = FALSE;
 
 	RtlInitUnicodeString(&devName, L"\\Device\\ProcessMon");
 	RtlInitUnicodeString(&linkName, L"\\??\\ProcessMon");
@@ -288,6 +290,7 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 			DbgPrintEx(77, 0, "IoCreateSymbolicLink = %x \n", status);
 			break;
 		}
+		linkCreate = TRUE;
 
 		status = PsSetCreateProcessNotifyRoutineEx(ProcessNotify, FALSE);
 		if (!NT_SUCCESS(status))
@@ -297,6 +300,18 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 		}
 
 	} while (0);
+
+	if (!NT_SUCCESS(status))
+	{
+		if (linkCreate)
+		{
+			IoDeleteSymbolicLink(&linkName);
+		}
+		if (devObj)
+		{
+			IoDeleteDevice(devObj);
+		}
+	}
 
 	DbgPrintEx(77, 0, "status = %x \n", status);
 

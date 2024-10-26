@@ -11,8 +11,7 @@ enum class Type
 typedef struct _Package
 {
 	Type type;
-	USHORT nameLen;
-	USHORT nameOffset;
+	ULONG pid;
 } Package, * PPackage;
 
 int err(const char* msg)
@@ -24,34 +23,26 @@ int err(const char* msg)
 
 int main()
 {
-	auto hFile = CreateFile(L"\\\\.\\ProcessMon", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+	auto hFile = CreateFile(L"\\\\.\\RemoteThreadMon", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
 		return err("打开设备失败");
 	}
 
-	LPCWCH name = L"notepad.exe";
-	int len = wcslen(name) * sizeof(WCHAR) + 2;
-	int size = sizeof(Package) + len;
+	ULONG pid = 1000;
 
-	PPackage package = (PPackage)malloc(size);
+	PPackage package = (PPackage)malloc(sizeof(Package));
 
 	if (!package)
 	{
 		return err("malloc error");
 	}
 
-	memset(package, 0, size);
 	package->type = Type::TYPE_ADD;
-	package->nameLen = len;
-	package->nameOffset = sizeof(Package);
-
-	printf("len = %d offset = %d \n", len, sizeof(Package));
-
-	memcpy((PUCHAR)package + package->nameOffset, name, len);
+	package->pid = pid;
 
 	DWORD bytes;
-	if (!WriteFile(hFile, package, size, &bytes, nullptr))
+	if (!WriteFile(hFile, package, sizeof(Package), &bytes, nullptr))
 	{
 		return err("写入失败");
 	}
@@ -60,7 +51,7 @@ int main()
 
 	package->type = Type::TYPE_DEL;
 
-	if (!WriteFile(hFile, package, size, &bytes, nullptr))
+	if (!WriteFile(hFile, package, sizeof(Package), &bytes, nullptr))
 	{
 		return err("写入失败");
 	}
