@@ -290,6 +290,7 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 	PDEVICE_OBJECT devObj = NULL;
 	UNICODE_STRING devName = { 0 };
 	UNICODE_STRING linkName = { 0 };
+	BOOLEAN linkCreate = FALSE;
 
 	RtlInitUnicodeString(&devName, L"\\Device\\sysmon");
 	RtlInitUnicodeString(&linkName, L"\\??\\sysmon");
@@ -310,6 +311,7 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 			DbgPrintEx(77, 0, "IoCreateSymbolicLink = %x \n", status);
 			break;
 		}
+		linkCreate = TRUE;
 
 		status = PsSetCreateProcessNotifyRoutineEx(ProcessNotify, FALSE);
 		if (!NT_SUCCESS(status))
@@ -333,6 +335,18 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg)
 		}
 
 	} while (0);
+
+	if (!NT_SUCCESS(status))
+	{
+		if (linkCreate)
+		{
+			IoDeleteSymbolicLink(&linkName);
+		}
+		if (devObj)
+		{
+			IoDeleteDevice(devObj);
+		}
+	}
 
 	driver->MajorFunction[IRP_MJ_CREATE] = createClose;
 	driver->MajorFunction[IRP_MJ_CLOSE] = createClose;

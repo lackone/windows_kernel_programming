@@ -299,9 +299,36 @@ ObRegisterCallbacks 注册线程、进程和桌面句柄操作的回调例程列表
 
 ObUnRegisterCallbacks 注销注册到 ObRegisterCallbacks 例程的一组回调例程
 
-CmRegisterCallbackEx
+CmRegisterCallbackEx  注册 RegistryCallback 例程
+
+CmUnregisterCallback 取消注册 RegistryCallback 例程
+
+CmCallbackGetKeyObjectIDEx  检索与指定注册表项对象关联的唯一标识符和对象名称
 
 =================================================================================================
+
+第10章
+
+FilterLoad   将微筛选器驱动程序动态加载到系统中
+
+FilterUnload  卸载微筛选器驱动程序
+
+FltLoadFilter 将微筛选器驱动程序动态加载到当前运行的系统中
+
+FltUnloadFilter  卸载微筛选器驱动程序
+
+FltRegisterFilter  注册微筛选器驱动程序
+
+FltStartFiltering  开始筛选已注册的微筛选器驱动程序
+
+FltUnregisterFilter  注销注册的微筛选器
+
+NtQueryInformationProcess  检索有关指定进程的信息
+
+ObOpenObjectByPointer   函数打开指针引用的对象，并返回该对象的句柄
+
+fltmc load 驱动名 运行小过滤驱动
+fltmc unload 驱动名  卸载小过滤驱动
 
 =================================================================================================
 
