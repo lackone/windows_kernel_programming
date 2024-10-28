@@ -333,6 +333,22 @@ FltParseFileNameInformation  分析 FLT_FILE_NAME_INFORMATION 结构的内容
 
 FltParseFileName  从文件名字符串分析扩展名、流和最终组件
 
+ZwOpenSymbolicLinkObject  打开现有的符号链接
+
+ZwQuerySymbolicLinkObject  例程返回一个 Unicode 字符串，其中包含符号链接的目标。
+
+FltAllocateContext  
+
+FltSetXxxContext
+
+FltGetXxxContext
+
+FltReleaseContext
+
+FltCreateFile   创建新文件或打开现有文件，防止了重入
+
+FltClose  
+
 fltmc load 驱动名 运行小过滤驱动
 fltmc unload 驱动名  卸载小过滤驱动
 

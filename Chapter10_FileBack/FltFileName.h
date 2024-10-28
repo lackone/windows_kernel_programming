@@ -19,7 +19,7 @@ enum class FileNameOptions
 // 定义位运算操作
 DEFINE_ENUM_FLAG_OPERATORS(FileNameOptions);
 
-struct FilterFileNameInformation 
+struct FilterFileNameInformation
 {
 	FilterFileNameInformation(PFLT_CALLBACK_DATA data, FileNameOptions options = FileNameOptions::QueryDefault | FileNameOptions::Normalized)
 	{
@@ -38,22 +38,22 @@ struct FilterFileNameInformation
 		}
 	}
 
-	operator bool() const 
+	operator bool() const
 	{
 		return _info != nullptr;
 	}
 
-	PFLT_FILE_NAME_INFORMATION Get() const 
+	PFLT_FILE_NAME_INFORMATION Get() const
 	{
 		return _info;
 	}
 
-	operator PFLT_FILE_NAME_INFORMATION() const 
+	operator PFLT_FILE_NAME_INFORMATION() const
 	{
 		return Get();
 	}
 
-	PFLT_FILE_NAME_INFORMATION operator->() 
+	PFLT_FILE_NAME_INFORMATION operator->()
 	{
 		return _info;
 	}
