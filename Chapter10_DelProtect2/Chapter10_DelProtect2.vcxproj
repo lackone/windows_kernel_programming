@@ -35,18 +35,18 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="Chapter10_DelProtect.rc" />
-    <ClCompile Include="Chapter10_DelProtect.cpp" />
-    <Inf Include="Chapter10_DelProtect.inf" />
+    <ResourceCompile Include="Chapter10_DelProtect2.rc" />
+    <ClCompile Include="Chapter10_DelProtect2.cpp" />
+    <Inf Include="Chapter10_DelProtect2.inf" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{3AB03DD7-44E8-44DF-8327-A4354D55ACF0}</ProjectGuid>
+    <ProjectGuid>{B18DD7AC-82C8-44B4-A4EA-F09EB1C04D2F}</ProjectGuid>
     <TemplateGuid>{f2f62967-0815-4fd7-9b86-6eedcac766eb}</TemplateGuid>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
     <Configuration>Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">Win32</Platform>
-    <RootNamespace>Chapter10_DelProtect</RootNamespace>
+    <RootNamespace>Chapter10_DelProtect2</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -184,7 +184,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
-    <ClInclude Include="FltFileName.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

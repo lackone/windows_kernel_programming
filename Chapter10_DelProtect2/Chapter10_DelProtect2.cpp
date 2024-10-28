@@ -2,11 +2,11 @@
 
 Module Name:
 
-    Chapter10DelProtect.c
+    Chapter10DelProtect2.c
 
 Abstract:
 
-    This is the main module of the Chapter10_DelProtect miniFilter driver.
+    This is the main module of the Chapter10_DelProtect2 miniFilter driver.
 
 Environment:
 
@@ -29,13 +29,11 @@ ULONG_PTR OperationStatusCtx = 1;
 
 ULONG gTraceFlags = 0;
 
-#define DRIVER_TAG 'dp'
-
-//保存执行文件名
-const int MaxExeNums = 32;
-WCHAR* exeNames[MaxExeNums];
-int exeNamesCount = 0;
-FastMutex exeNamesLock;
+//定义需要用到的变量
+const int MaxDirNums = 32;
+DirEntry dirNames[MaxDirNums];
+int dirNamesCount;
+FastMutex dirNamesLock;
 
 #define PT_DBG_PRINT( _dbgLevel, _string )          \
     (FlagOn(gTraceFlags,(_dbgLevel)) ?              \
@@ -45,14 +43,6 @@ FastMutex exeNamesLock;
 /*************************************************************************
     Prototypes
 *************************************************************************/
-
-extern "C" NTSTATUS NTAPI ZwQueryInformationProcess(
-	__in HANDLE ProcessHandle,
-	__in PROCESSINFOCLASS ProcessInformationClass,
-	__out_bcount(ProcessInformationLength) PVOID ProcessInformation,
-	__in ULONG ProcessInformationLength,
-	__out_opt PULONG ReturnLength
-);
 
 EXTERN_C_START
 
@@ -64,7 +54,7 @@ DriverEntry (
     );
 
 NTSTATUS
-Chapter10DelProtectInstanceSetup (
+Chapter10DelProtect2InstanceSetup (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_SETUP_FLAGS Flags,
     _In_ DEVICE_TYPE VolumeDeviceType,
@@ -72,37 +62,37 @@ Chapter10DelProtectInstanceSetup (
     );
 
 VOID
-Chapter10DelProtectInstanceTeardownStart (
+Chapter10DelProtect2InstanceTeardownStart (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
     );
 
 VOID
-Chapter10DelProtectInstanceTeardownComplete (
+Chapter10DelProtect2InstanceTeardownComplete (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
     );
 
 NTSTATUS
-Chapter10DelProtectUnload (
+Chapter10DelProtect2Unload (
     _In_ FLT_FILTER_UNLOAD_FLAGS Flags
     );
 
 NTSTATUS
-Chapter10DelProtectInstanceQueryTeardown (
+Chapter10DelProtect2InstanceQueryTeardown (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS Flags
     );
 
 FLT_PREOP_CALLBACK_STATUS
-Chapter10DelProtectPreOperation (
+Chapter10DelProtect2PreOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
     );
 
 VOID
-Chapter10DelProtectOperationStatusCallback (
+Chapter10DelProtect2OperationStatusCallback (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ PFLT_IO_PARAMETER_BLOCK ParameterSnapshot,
     _In_ NTSTATUS OperationStatus,
@@ -110,7 +100,7 @@ Chapter10DelProtectOperationStatusCallback (
     );
 
 FLT_POSTOP_CALLBACK_STATUS
-Chapter10DelProtectPostOperation (
+Chapter10DelProtect2PostOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_opt_ PVOID CompletionContext,
@@ -118,14 +108,14 @@ Chapter10DelProtectPostOperation (
     );
 
 FLT_PREOP_CALLBACK_STATUS
-Chapter10DelProtectPreOperationNoPostOperation (
+Chapter10DelProtect2PreOperationNoPostOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
     );
 
 BOOLEAN
-Chapter10DelProtectDoRequestOperationStatus(
+Chapter10DelProtect2DoRequestOperationStatus(
     _In_ PFLT_CALLBACK_DATA Data
     );
 
@@ -137,132 +127,115 @@ EXTERN_C_END
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-#pragma alloc_text(PAGE, Chapter10DelProtectUnload)
-#pragma alloc_text(PAGE, Chapter10DelProtectInstanceQueryTeardown)
-#pragma alloc_text(PAGE, Chapter10DelProtectInstanceSetup)
-#pragma alloc_text(PAGE, Chapter10DelProtectInstanceTeardownStart)
-#pragma alloc_text(PAGE, Chapter10DelProtectInstanceTeardownComplete)
+#pragma alloc_text(PAGE, Chapter10DelProtect2Unload)
+#pragma alloc_text(PAGE, Chapter10DelProtect2InstanceQueryTeardown)
+#pragma alloc_text(PAGE, Chapter10DelProtect2InstanceSetup)
+#pragma alloc_text(PAGE, Chapter10DelProtect2InstanceTeardownStart)
+#pragma alloc_text(PAGE, Chapter10DelProtect2InstanceTeardownComplete)
 #endif
 
 //
 //  operation registration
 //
 
-bool findExe(PCWSTR name)
+int findDir(PCUNICODE_STRING name, bool dosName)
 {
-	AutoLock<FastMutex> lock(exeNamesLock);
-	if (exeNamesCount == 0)
+	if (dirNamesCount == 0)
 	{
-		return false;
+		return -1;
 	}
-	for (int i = 0; i < MaxExeNums; i++)
+	for (int i = 0; i < MaxDirNums; i++)
 	{
-		if (exeNames[i] && _wcsicmp(exeNames[i], name) == 0)
+		auto& dir = dosName ? dirNames[i].dosName : dirNames[i].ntName;
+
+        DbgPrintEx(77, 0, "dir = %wZ name = %wZ \n", &dir, name);
+        
+		//RtlEqualUnicodeString检查字符串的相等性，采用忽略大小写的方式
+		if (dir.Buffer && RtlEqualUnicodeString(name, &dir, TRUE))
 		{
-			return true;
+			return i;
 		}
 	}
-	return false;
+	return -1;
 }
 
-void clearAll()
+bool IsDeleteAllowed(PFLT_CALLBACK_DATA data)
 {
-	AutoLock<FastMutex> lock(exeNamesLock);
-	for (int i = 0; i < MaxExeNums; i++)
-	{
-		if (exeNames[i])
-		{
-			ExFreePoolWithTag(exeNames[i], DRIVER_TAG);
-			exeNames[i] = nullptr;
-		}
-	}
-	exeNamesCount = 0;
-}
+    PFLT_FILE_NAME_INFORMATION info = nullptr;
+    auto allow = true;
 
-bool IsDeleteAllowed(PEPROCESS process)
-{
-    bool curProcess = PsGetCurrentProcess() == process;
-    HANDLE hProcess;
-    if (curProcess)
+    do 
     {
-        hProcess = NtCurrentProcess();
-    }
-    else
-    {
-        auto status = ObOpenObjectByPointer(process, OBJ_KERNEL_HANDLE, nullptr, 0, nullptr, KernelMode, &hProcess);
+        auto status = FltGetFileNameInformation(data, FLT_FILE_NAME_QUERY_DEFAULT | FLT_FILE_NAME_NORMALIZED, &info);
         if (!NT_SUCCESS(status))
         {
-            return true;
+            break;
         }
-    }
-    auto size = 512;
-    bool allowDel = true;
-    auto processName = (UNICODE_STRING*)ExAllocatePoolWithTag(PagedPool, size, 0);
 
-    if (processName)
-    {
-        RtlZeroMemory(processName, size);
+        status = FltParseFileNameInformation(info);
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
 
-        auto status = ZwQueryInformationProcess(NtCurrentProcess(), ProcessImageFileName, processName, size - sizeof(WCHAR), nullptr);
+        UNICODE_STRING path;
+        path.Length = path.MaximumLength = info->Volume.Length + info->Share.Length + info->ParentDir.Length;
+        path.Buffer = info->Volume.Buffer;
 
-        if (NT_SUCCESS(status))
+        DbgPrintEx(77, 0, "path = %wZ \n", path);
+
+        AutoLock<FastMutex> lock(dirNamesLock);
+        if (findDir(&path, false) >= 0)
         {
-            DbgPrintEx(77, 0, "delete operation from %wZ \n", processName);
-
-            auto exeName = wcsrchr(processName->Buffer, L'\\');
-
-			if (exeName && findExe(exeName + 1))
-			{
-                allowDel = false;
-			}
+            allow = false;
+            DbgPrintEx(77, 0, "file not allowed to delete : %wZ \n", &info->Name);
         }
 
-        ExFreePoolWithTag(processName, 0);
-    }
+    } while (0);
 
-    if (!curProcess)
+    if (info)
     {
-        ZwClose(hProcess);
+        FltReleaseFileNameInformation(info);
     }
 
-    return allowDel;
+	return allow;
 }
 
 FLT_PREOP_CALLBACK_STATUS FLTAPI delProtectPreCreate(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Outptr_result_maybenull_ PVOID* CompletionContext
-    )
+	_Inout_ PFLT_CALLBACK_DATA Data,
+	_In_ PCFLT_RELATED_OBJECTS FltObjects,
+	_Outptr_result_maybenull_ PVOID* CompletionContext
+)
 {
-    UNREFERENCED_PARAMETER(FltObjects);
-    UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
 	//使用 FLT_PREOP_COMPLETE 时，表示你彻底处理了请求，不希望其他后续操作被执行。
 	//使用 FLT_PREOP_SUCCESS_NO_CALLBACK 时，表示请求成功，但你的驱动并不关注后面的处理，允许其他过滤器继续接管。
 
-    if (Data->RequestorMode == KernelMode)
-    {
-        //判断请求，是否来自于内核
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	if (Data->RequestorMode == KernelMode)
+	{
+		//判断请求，是否来自于内核
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-    auto& params = Data->Iopb->Parameters.Create;
-    auto retStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
+	auto& params = Data->Iopb->Parameters.Create;
+	auto retStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    if (params.Options & FILE_DELETE_ON_CLOSE)
-    {
+	if (params.Options & FILE_DELETE_ON_CLOSE)
+	{
 		//检查FILE_DELETE_ON_CLOSE标志是否存在于创建请求中
 
-        DbgPrintEx(77, 0, "delete on close : %wZ \n", &Data->Iopb->TargetFileObject->FileName);
+		DbgPrintEx(77, 0, "delete on close : %wZ \n", &Data->Iopb->TargetFileObject->FileName);
 
-        if (!IsDeleteAllowed(PsGetCurrentProcess()))
-        {
+		if (!IsDeleteAllowed(Data))
+		{
 
-            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-            retStatus = FLT_PREOP_COMPLETE;
-        }
-    }
+			Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+			retStatus = FLT_PREOP_COMPLETE;
+		}
+	}
 
-    return retStatus;
+	return retStatus;
 }
 
 FLT_PREOP_CALLBACK_STATUS FLTAPI delProtectPreSetInfo(
@@ -271,247 +244,244 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI delProtectPreSetInfo(
 	_Outptr_result_maybenull_ PVOID* CompletionContext
 )
 {
-    UNREFERENCED_PARAMETER(FltObjects);
-    UNREFERENCED_PARAMETER(CompletionContext);
-    
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+
 	if (Data->RequestorMode == KernelMode)
 	{
 		//判断请求，是否来自于内核
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-    auto& params = Data->Iopb->Parameters.SetFileInformation;
+	auto& params = Data->Iopb->Parameters.SetFileInformation;
 
-    //FileInformationClass表示本实例代表的操作类型
-    if (params.FileInformationClass != FileDispositionInformation &&
-        params.FileInformationClass != FileDispositionInformationEx
-    )
-    {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	//FileInformationClass表示本实例代表的操作类型
+	if (params.FileInformationClass != FileDispositionInformation &&
+		params.FileInformationClass != FileDispositionInformationEx
+		)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-    auto info = (FILE_DISPOSITION_INFORMATION*)params.InfoBuffer;
-    if (!info->DeleteFile)
-    {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	auto info = (FILE_DISPOSITION_INFORMATION*)params.InfoBuffer;
+	if (!info->DeleteFile)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-	//我们必须检查最初的调用者提供的数据中的Thread字段。从这个线程，我们可以找到指向进程的指针
-    auto process = PsGetThreadProcess(Data->Thread);
+	auto retStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    auto retStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
-
-	if (!IsDeleteAllowed(process))
+	if (!IsDeleteAllowed(Data))
 	{
 		Data->IoStatus.Status = STATUS_ACCESS_DENIED;
 		retStatus = FLT_PREOP_COMPLETE;
 
-        DbgPrintEx(77, 0, "prevent delete from IRP_MJ_SET_INFORMATION by cmd.exe \n");
+		DbgPrintEx(77, 0, "prevent delete from IRP_MJ_SET_INFORMATION by %wZ \n", &Data->Iopb->TargetFileObject->FileName);
 	}
 
-    return retStatus;
+	return retStatus;
 }
 
 CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
-    {IRP_MJ_CREATE, 0, delProtectPreCreate, nullptr}, //通FILE_DELETE_ON_CLOSE标志打开文件，所有句柄关闭此文件就会被删除
+	{IRP_MJ_CREATE, 0, delProtectPreCreate, nullptr}, //通FILE_DELETE_ON_CLOSE标志打开文件，所有句柄关闭此文件就会被删除
 	{IRP_MJ_SET_INFORMATION, 0, delProtectPreSetInfo, nullptr}, //提供了一堆操作功能，删除只是其中一种
 
 #if 0 // TODO - List all of the requests to filter.
     { IRP_MJ_CREATE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_CREATE_NAMED_PIPE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_CLOSE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_READ,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_WRITE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_QUERY_INFORMATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SET_INFORMATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_QUERY_EA,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SET_EA,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_FLUSH_BUFFERS,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_QUERY_VOLUME_INFORMATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SET_VOLUME_INFORMATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_DIRECTORY_CONTROL,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_FILE_SYSTEM_CONTROL,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_DEVICE_CONTROL,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_INTERNAL_DEVICE_CONTROL,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SHUTDOWN,
       0,
-      Chapter10DelProtectPreOperationNoPostOperation,
+      Chapter10DelProtect2PreOperationNoPostOperation,
       NULL },                               //post operations not supported
 
     { IRP_MJ_LOCK_CONTROL,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_CLEANUP,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_CREATE_MAILSLOT,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_QUERY_SECURITY,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SET_SECURITY,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_QUERY_QUOTA,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_SET_QUOTA,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_PNP,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_ACQUIRE_FOR_MOD_WRITE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_RELEASE_FOR_MOD_WRITE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_ACQUIRE_FOR_CC_FLUSH,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_RELEASE_FOR_CC_FLUSH,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_FAST_IO_CHECK_IF_POSSIBLE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_NETWORK_QUERY_OPEN,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_MDL_READ,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_MDL_READ_COMPLETE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_PREPARE_MDL_WRITE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_MDL_WRITE_COMPLETE,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_VOLUME_MOUNT,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
     { IRP_MJ_VOLUME_DISMOUNT,
       0,
-      Chapter10DelProtectPreOperation,
-      Chapter10DelProtectPostOperation },
+      Chapter10DelProtect2PreOperation,
+      Chapter10DelProtect2PostOperation },
 
 #endif // TODO
 
@@ -531,12 +501,12 @@ CONST FLT_REGISTRATION FilterRegistration = {
     NULL,                               //  Context
     Callbacks,                          //  Operation callbacks
 
-    Chapter10DelProtectUnload,                           //  MiniFilterUnload
+    Chapter10DelProtect2Unload,                           //  MiniFilterUnload
 
-    Chapter10DelProtectInstanceSetup,                    //  InstanceSetup
-    Chapter10DelProtectInstanceQueryTeardown,            //  InstanceQueryTeardown
-    Chapter10DelProtectInstanceTeardownStart,            //  InstanceTeardownStart
-    Chapter10DelProtectInstanceTeardownComplete,         //  InstanceTeardownComplete
+    Chapter10DelProtect2InstanceSetup,                    //  InstanceSetup
+    Chapter10DelProtect2InstanceQueryTeardown,            //  InstanceQueryTeardown
+    Chapter10DelProtect2InstanceTeardownStart,            //  InstanceTeardownStart
+    Chapter10DelProtect2InstanceTeardownComplete,         //  InstanceTeardownComplete
 
     NULL,                               //  GenerateFileName
     NULL,                               //  GenerateDestinationFileName
@@ -547,7 +517,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
 
 
 NTSTATUS
-Chapter10DelProtectInstanceSetup (
+Chapter10DelProtect2InstanceSetup (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_SETUP_FLAGS Flags,
     _In_ DEVICE_TYPE VolumeDeviceType,
@@ -585,14 +555,14 @@ Return Value:
     PAGED_CODE();
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectInstanceSetup: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2InstanceSetup: Entered\n") );
 
     return STATUS_SUCCESS;
 }
 
 
 NTSTATUS
-Chapter10DelProtectInstanceQueryTeardown (
+Chapter10DelProtect2InstanceQueryTeardown (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS Flags
     )
@@ -627,14 +597,14 @@ Return Value:
     PAGED_CODE();
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectInstanceQueryTeardown: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2InstanceQueryTeardown: Entered\n") );
 
     return STATUS_SUCCESS;
 }
 
 
 VOID
-Chapter10DelProtectInstanceTeardownStart (
+Chapter10DelProtect2InstanceTeardownStart (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
     )
@@ -663,12 +633,12 @@ Return Value:
     PAGED_CODE();
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectInstanceTeardownStart: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2InstanceTeardownStart: Entered\n") );
 }
 
 
 VOID
-Chapter10DelProtectInstanceTeardownComplete (
+Chapter10DelProtect2InstanceTeardownComplete (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
     )
@@ -697,141 +667,280 @@ Return Value:
     PAGED_CODE();
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectInstanceTeardownComplete: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2InstanceTeardownComplete: Entered\n") );
 }
 
 
 /*************************************************************************
     MiniFilter initialization and unload routines.
 *************************************************************************/
+
+
+NTSTATUS convertDosNameToNtName(PCWSTR dosName, PUNICODE_STRING ntName)
+{
+    ntName->Buffer = nullptr;
+    auto dosNameLen = wcslen(dosName);
+
+    if (dosNameLen < 3)
+    {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    if (dosName[2] != L'\\' || dosName[1] != L':')
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+
+    UNICODE_STRING link;
+    WCHAR buf[20] = { 0 };
+    RtlInitEmptyUnicodeString(&link, buf, sizeof(buf));
+
+    DbgPrintEx(77, 0, "dos = %ws \n", dosName);
+
+    wcsncpy(link.Buffer, L"\\??\\", 4);
+    wcsncpy(link.Buffer + 4, dosName, 2);
+
+    link.Length = 12;
+
+    DbgPrintEx(77, 0, "link = %ws \n", link.Buffer);
+    DbgPrintEx(77, 0, "link = %wZ \n", &link);
+
+    OBJECT_ATTRIBUTES linkAttr;
+    InitializeObjectAttributes(&linkAttr, &link, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, nullptr, nullptr);
+    HANDLE hLink = nullptr;
+    auto status = STATUS_SUCCESS;
+
+    do 
+    {
+        status = ZwOpenSymbolicLinkObject(&hLink, GENERIC_READ, &linkAttr);
+        if (!NT_SUCCESS(status))
+        {
+            break;
+        }
+        USHORT maxLen = 1024;
+        ntName->Buffer = (WCHAR*)ExAllocatePoolWithTag(PagedPool, maxLen, 0);
+        if (!ntName->Buffer)
+        {
+            status = STATUS_INSUFFICIENT_RESOURCES;
+            break;
+        }
+        ntName->MaximumLength = maxLen;
+
+        status = ZwQuerySymbolicLinkObject(hLink, ntName, nullptr);
+        if (!NT_SUCCESS(status))
+        {
+            break;
+        }
+    } while (0);
+
+    if (!NT_SUCCESS(status))
+    {
+        if (ntName->Buffer)
+        {
+            ExFreePoolWithTag(ntName->Buffer, 0);
+            ntName->Buffer = nullptr;
+        }
+    }
+    else
+    {
+        RtlAppendUnicodeToString(ntName, dosName + 2);
+    }
+
+    if (hLink)
+    {
+        ZwClose(hLink);
+    }
+
+    return status;
+}
+
+void clearAll() 
+{
+    AutoLock<FastMutex> lock(dirNamesLock);
+	for (int i = 0; i < MaxDirNums; i++) 
+    {
+		if (dirNames[i].dosName.Buffer)
+        {
+			ExFreePoolWithTag(dirNames[i].dosName.Buffer, 0);
+            dirNames[i].dosName.Buffer = nullptr;
+		}
+		if (dirNames[i].ntName.Buffer) 
+        {
+            ExFreePoolWithTag(dirNames[i].ntName.Buffer, 0);
+            dirNames[i].ntName.Buffer = nullptr;
+		}
+	}
+	dirNamesCount = 0;
+}
+
 VOID DriverUnload(
-    _In_ struct _DRIVER_OBJECT* DriverObject
+	_In_ struct _DRIVER_OBJECT* DriverObject
 )
 {
-    clearAll();
+	clearAll();
 
-    UNICODE_STRING linkName = RTL_CONSTANT_STRING(L"\\??\\delprotect");
+	UNICODE_STRING linkName = RTL_CONSTANT_STRING(L"\\??\\delprotect2");
 
-    IoDeleteSymbolicLink(&linkName);
+	IoDeleteSymbolicLink(&linkName);
 
-    if (DriverObject->DeviceObject)
-    {
-        IoDeleteDevice(DriverObject->DeviceObject);
-    }
+	if (DriverObject->DeviceObject)
+	{
+		IoDeleteDevice(DriverObject->DeviceObject);
+	}
 }
 
 NTSTATUS createClose(
-    _In_ struct _DEVICE_OBJECT* DeviceObject,
-    _Inout_ struct _IRP* Irp
-)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS ctl(
 	_In_ struct _DEVICE_OBJECT* DeviceObject,
 	_Inout_ struct _IRP* Irp
 )
 {
-    UNREFERENCED_PARAMETER(DeviceObject);
-    auto stack = IoGetCurrentIrpStackLocation(Irp);
-    auto status = STATUS_SUCCESS;
-    PVOID buf = Irp->AssociatedIrp.SystemBuffer;
+	UNREFERENCED_PARAMETER(DeviceObject);
+	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	return STATUS_SUCCESS;
+}
 
-    switch (stack->Parameters.DeviceIoControl.IoControlCode)
-    {
-    case ADD_EXE:
-    {
-        auto name = (WCHAR*)buf;
-        if (!name)
-        {
-            status = STATUS_INVALID_PARAMETER;
-            break;
-        }
+NTSTATUS ctl(
+    _In_ struct _DEVICE_OBJECT* DeviceObject,
+    _Inout_ struct _IRP* Irp
+)
+{
+	UNREFERENCED_PARAMETER(DeviceObject);
+	auto stack = IoGetCurrentIrpStackLocation(Irp);
+	auto status = STATUS_SUCCESS;
+	PVOID buf = Irp->AssociatedIrp.SystemBuffer;
+    auto bufLen = stack->Parameters.DeviceIoControl.InputBufferLength;
 
-        if (findExe(name))
-        {
-            break;
-        }
-
-        AutoLock<FastMutex> lock(exeNamesLock);
-        if (exeNamesCount == MaxExeNums)
-        {
-            status = STATUS_TOO_MANY_NAMES;
-            break;
-        }
-
-        for (int i = 0; i < MaxExeNums; i++)
-        {
-            if (exeNames[i] == nullptr)
-            {
-                auto len = (wcslen(name) + 1) * sizeof(WCHAR);
-                auto tmp = (WCHAR*)ExAllocatePoolWithTag(PagedPool, len, DRIVER_TAG);
-                if (!tmp)
-                {
-                    status = STATUS_INSUFFICIENT_RESOURCES;
-                    break;
-                }
-                wcscpy_s(tmp, len / sizeof(WCHAR), name);
-                exeNames[i] = tmp;
-                ++exeNamesCount;
-
-                DbgPrintEx(77, 0, "添加 %ws \n", name);
-
-                break;
-            }
-        }
-
-        break;
-    }
-    case DEL_EXE:
-    {
+	switch (stack->Parameters.DeviceIoControl.IoControlCode)
+	{
+	case ADD_DIR:
+	{
 		auto name = (WCHAR*)buf;
 		if (!name)
 		{
 			status = STATUS_INVALID_PARAMETER;
 			break;
 		}
-
-        AutoLock<FastMutex> lock(exeNamesLock);
-        auto find = false;
-        for (int i = 0; i < MaxExeNums; i++)
+        if (bufLen > 1024)
         {
-            if (_wcsicmp(exeNames[i], name) == 0)
+            status = STATUS_INVALID_PARAMETER;
+            break;
+        }
+        name[bufLen / sizeof(WCHAR) - 1] = L'\0';
+
+        auto dosNameLen = wcslen(name);
+        if (dosNameLen < 3)
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        AutoLock<FastMutex> lock(dirNamesLock);
+
+        UNICODE_STRING strName;
+        RtlInitUnicodeString(&strName, name);
+
+        if (findDir(&strName, true) >= 0)
+        {
+            break;
+        }
+
+        if (dirNamesCount == MaxDirNums)
+        {
+            status = STATUS_TOO_MANY_NAMES;
+            break;
+        }
+
+        for (int i = 0; i < MaxDirNums; i++)
+        {
+            if (dirNames[i].dosName.Buffer == nullptr)
             {
-                ExFreePoolWithTag(exeNames[i], DRIVER_TAG);
-                exeNames[i] = nullptr;
-                --exeNamesCount;
-                find = true;
+                auto len = (dosNameLen + 2) * sizeof(WCHAR);
+                auto tmp = (WCHAR*)ExAllocatePoolWithTag(PagedPool, len, 0);
+                if (!tmp)
+                {
+                    status = STATUS_INSUFFICIENT_RESOURCES;
+                    break;
+                }
+                wcscpy_s(tmp, len / sizeof(WCHAR), name);
 
-                DbgPrintEx(77, 0, "删除 %ws \n", name);
+                if (name[dosNameLen - 1] != L'\\')
+                {
+                    wcscat_s(tmp, dosNameLen + 2, L"\\");
+                }
 
+                status = convertDosNameToNtName(tmp, &dirNames[i].ntName);
+                if (!NT_SUCCESS(status))
+                {
+                    ExFreePoolWithTag(tmp, 0);
+                    break;
+                }
+
+                RtlInitUnicodeString(&dirNames[i].dosName, tmp);
+
+                DbgPrintEx(77, 0, "add %wZ <==> %wZ \n", &dirNames[i].dosName, &dirNames[i].ntName);
+
+                ++dirNamesCount;
                 break;
             }
         }
-        if (!find)
+
+		break;
+	}
+	case DEL_DIR:
+	{
+		auto name = (WCHAR*)buf;
+		if (!name)
+		{
+			status = STATUS_INVALID_PARAMETER;
+			break;
+		}
+		if (bufLen > 1024)
+		{
+			status = STATUS_INVALID_PARAMETER;
+			break;
+		}
+		name[bufLen / sizeof(WCHAR) - 1] = L'\0';
+
+		auto dosNameLen = wcslen(name);
+		if (dosNameLen < 3)
+		{
+			status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+
+		AutoLock<FastMutex> lock(dirNamesLock);
+
+		UNICODE_STRING strName;
+		RtlInitUnicodeString(&strName, name);
+
+		int found = findDir(&strName, true);
+		if (found >= 0) 
         {
-            status = STATUS_NOT_FOUND;
-        }
+			dirNames[found].Free();
+			dirNamesCount--;
+		}
+		else 
+        {
+			status = STATUS_NOT_FOUND;
+		}
 
-        break;
-    }
-    case CLEAR_EXE:
-    {
-        clearAll();
+		break;
+	}
+	case CLEAR_DIR:
+	{
+		clearAll();
 
-        break;
-    }
-    }
+		break;
+	}
+	}
 
-    Irp->IoStatus.Status = status;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return status;
+	Irp->IoStatus.Status = status;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	return status;
 }
 
 NTSTATUS
@@ -864,40 +973,35 @@ Return Value:
 
     UNREFERENCED_PARAMETER( RegistryPath );
 
-    //右键 .inf 文件安装驱动
-    //fltmc load Chapter10_DelProtect
-    //fltmc unload Chapter10_DelProtect
-
     DbgPrintEx(77, 0, "%wZ \n", RegistryPath);
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!DriverEntry: Entered\n") );
+                  ("Chapter10DelProtect2!DriverEntry: Entered\n") );
 
+	PDEVICE_OBJECT devObj = NULL;
+	UNICODE_STRING devName = RTL_CONSTANT_STRING(L"\\Device\\delprotect2");
+	UNICODE_STRING linkName = RTL_CONSTANT_STRING(L"\\??\\delprotect2");
+	auto linkCreate = false;
 
-    PDEVICE_OBJECT devObj = NULL;
-    UNICODE_STRING devName = RTL_CONSTANT_STRING(L"\\Device\\delprotect");
-    UNICODE_STRING linkName = RTL_CONSTANT_STRING(L"\\??\\delprotect");
-    auto linkCreate = false;
+	do
+	{
+		status = IoCreateDevice(DriverObject, 0, &devName, FILE_DEVICE_UNKNOWN, 0, false, &devObj);
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+		devObj->Flags |= DO_BUFFERED_IO;
 
-    do 
-    {
-        status = IoCreateDevice(DriverObject, 0, &devName, FILE_DEVICE_UNKNOWN, 0, false, &devObj);
-        if (!NT_SUCCESS(status))
-        {
-            break;
-        }
-        devObj->Flags |= DO_BUFFERED_IO;
-
-        status = IoCreateSymbolicLink(&linkName, &devName);
-        if (!NT_SUCCESS(status))
-        {
-            break;
-        }
-        linkCreate = true;
+		status = IoCreateSymbolicLink(&linkName, &devName);
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+		linkCreate = true;
 
 		//
-	    //  Register with FltMgr to tell it our callback routines
-	    //
+		//  Register with FltMgr to tell it our callback routines
+		//
 		status = FltRegisterFilter(DriverObject, &FilterRegistration, &gFilterHandle);
 
 		FLT_ASSERT(NT_SUCCESS(status));
@@ -907,36 +1011,36 @@ Return Value:
 			break;
 		}
 
-        DriverObject->DriverUnload = DriverUnload;
-        DriverObject->MajorFunction[IRP_MJ_CREATE] = createClose;
-        DriverObject->MajorFunction[IRP_MJ_CLOSE] = createClose;
-        DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ctl;
+		DriverObject->DriverUnload = DriverUnload;
+		DriverObject->MajorFunction[IRP_MJ_CREATE] = createClose;
+		DriverObject->MajorFunction[IRP_MJ_CLOSE] = createClose;
+		DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ctl;
 
-        exeNamesLock.Init();
+		dirNamesLock.Init();
 
-        status = FltStartFiltering(gFilterHandle);
-    } while (0);
+		status = FltStartFiltering(gFilterHandle);
+	} while (0);
 
 	if (!NT_SUCCESS(status)) {
-        if (gFilterHandle)
-        {
-            FltUnregisterFilter(gFilterHandle);
-        }
-        if (linkCreate)
-        {
-            IoDeleteSymbolicLink(&linkName);
-        }
-        if (devObj)
-        {
-            IoDeleteDevice(devObj);
-        }
+		if (gFilterHandle)
+		{
+			FltUnregisterFilter(gFilterHandle);
+		}
+		if (linkCreate)
+		{
+			IoDeleteSymbolicLink(&linkName);
+		}
+		if (devObj)
+		{
+			IoDeleteDevice(devObj);
+		}
 	}
 
     return status;
 }
 
 NTSTATUS
-Chapter10DelProtectUnload (
+Chapter10DelProtect2Unload (
     _In_ FLT_FILTER_UNLOAD_FLAGS Flags
     )
 /*++
@@ -963,7 +1067,7 @@ Return Value:
     PAGED_CODE();
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectUnload: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2Unload: Entered\n") );
 
     FltUnregisterFilter( gFilterHandle );
 
@@ -975,7 +1079,7 @@ Return Value:
     MiniFilter callback routines.
 *************************************************************************/
 FLT_PREOP_CALLBACK_STATUS
-Chapter10DelProtectPreOperation (
+Chapter10DelProtect2PreOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
@@ -1011,7 +1115,7 @@ Return Value:
     UNREFERENCED_PARAMETER( CompletionContext );
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectPreOperation: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2PreOperation: Entered\n") );
 
     //
     //  See if this is an operation we would like the operation status
@@ -1022,15 +1126,15 @@ Return Value:
     //        actually granted.
     //
 
-    if (Chapter10DelProtectDoRequestOperationStatus( Data )) {
+    if (Chapter10DelProtect2DoRequestOperationStatus( Data )) {
 
         status = FltRequestOperationStatusCallback( Data,
-                                                    Chapter10DelProtectOperationStatusCallback,
+                                                    Chapter10DelProtect2OperationStatusCallback,
                                                     (PVOID)(++OperationStatusCtx) );
         if (!NT_SUCCESS(status)) {
 
             PT_DBG_PRINT( PTDBG_TRACE_OPERATION_STATUS,
-                          ("Chapter10DelProtect!Chapter10DelProtectPreOperation: FltRequestOperationStatusCallback Failed, status=%08x\n",
+                          ("Chapter10DelProtect2!Chapter10DelProtect2PreOperation: FltRequestOperationStatusCallback Failed, status=%08x\n",
                            status) );
         }
     }
@@ -1045,7 +1149,7 @@ Return Value:
 
 
 VOID
-Chapter10DelProtectOperationStatusCallback (
+Chapter10DelProtect2OperationStatusCallback (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ PFLT_IO_PARAMETER_BLOCK ParameterSnapshot,
     _In_ NTSTATUS OperationStatus,
@@ -1087,10 +1191,10 @@ Return Value:
     UNREFERENCED_PARAMETER( FltObjects );
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectOperationStatusCallback: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2OperationStatusCallback: Entered\n") );
 
     PT_DBG_PRINT( PTDBG_TRACE_OPERATION_STATUS,
-                  ("Chapter10DelProtect!Chapter10DelProtectOperationStatusCallback: Status=%08x ctx=%p IrpMj=%02x.%02x \"%s\"\n",
+                  ("Chapter10DelProtect2!Chapter10DelProtect2OperationStatusCallback: Status=%08x ctx=%p IrpMj=%02x.%02x \"%s\"\n",
                    OperationStatus,
                    RequesterContext,
                    ParameterSnapshot->MajorFunction,
@@ -1100,7 +1204,7 @@ Return Value:
 
 
 FLT_POSTOP_CALLBACK_STATUS
-Chapter10DelProtectPostOperation (
+Chapter10DelProtect2PostOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_opt_ PVOID CompletionContext,
@@ -1139,14 +1243,14 @@ Return Value:
     UNREFERENCED_PARAMETER( Flags );
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectPostOperation: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2PostOperation: Entered\n") );
 
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
 
 FLT_PREOP_CALLBACK_STATUS
-Chapter10DelProtectPreOperationNoPostOperation (
+Chapter10DelProtect2PreOperationNoPostOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
@@ -1181,7 +1285,7 @@ Return Value:
     UNREFERENCED_PARAMETER( CompletionContext );
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("Chapter10DelProtect!Chapter10DelProtectPreOperationNoPostOperation: Entered\n") );
+                  ("Chapter10DelProtect2!Chapter10DelProtect2PreOperationNoPostOperation: Entered\n") );
 
     // This template code does not do anything with the callbackData, but
     // rather returns FLT_PREOP_SUCCESS_NO_CALLBACK.
@@ -1192,7 +1296,7 @@ Return Value:
 
 
 BOOLEAN
-Chapter10DelProtectDoRequestOperationStatus(
+Chapter10DelProtect2DoRequestOperationStatus(
     _In_ PFLT_CALLBACK_DATA Data
     )
 /*++

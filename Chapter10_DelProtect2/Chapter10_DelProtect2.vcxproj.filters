@@ -19,25 +19,22 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="Chapter10_DelProtect.inf">
+    <Inf Include="Chapter10_DelProtect2.inf">
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Chapter10_DelProtect.cpp">
+    <ClCompile Include="Chapter10_DelProtect2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="Chapter10_DelProtect.rc">
+    <ResourceCompile Include="Chapter10_DelProtect2.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="FltFileName.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

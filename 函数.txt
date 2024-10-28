@@ -327,9 +327,33 @@ NtQueryInformationProcess  检索有关指定进程的信息
 
 ObOpenObjectByPointer   函数打开指针引用的对象，并返回该对象的句柄
 
+FltGetFileNameInformation   返回文件或目录的名称信息
+
+FltParseFileNameInformation  分析 FLT_FILE_NAME_INFORMATION 结构的内容
+
+FltParseFileName  从文件名字符串分析扩展名、流和最终组件
+
 fltmc load 驱动名 运行小过滤驱动
 fltmc unload 驱动名  卸载小过滤驱动
 
 =================================================================================================
+
+第11章
+
+IoAttachDevice  将调用方的设备对象附加到命名的目标设备对象
+
+IoAttachDeviceToDeviceStack
+
+IoAttachDeviceToDeviceStackSafe
+
+IoGetDeviceObjectPointer  基于设备的名称，返回一个设备对象和一个为此设备打开的文件对象
+
+IoCallDriver
+
+IoGetNextIrpStackLocation
+
+IoCopyCurrentIrpStackLocationToNext
+
+IoSkipCurrentIrpStackLocation
 
 =================================================================================================
