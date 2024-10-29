@@ -25,6 +25,15 @@ Environment:
 PFLT_FILTER gFilterHandle;
 ULONG_PTR OperationStatusCtx = 1;
 
+PFLT_PORT FilterPort;
+PFLT_PORT SendClientPort;
+
+struct FileBackPortMsg
+{
+    USHORT fileNameLen;
+    WCHAR fileName[1];
+};
+
 #define PTDBG_TRACE_ROUTINES            0x00000001
 #define PTDBG_TRACE_OPERATION_STATUS    0x00000002
 
@@ -446,6 +455,28 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI fileBackPreWrite(
         {
             DbgPrintEx(77, 0, "backup error %x \n", status);
         }
+        else
+        {
+			// 给客户端发送消息
+			if (SendClientPort) 
+            {
+				USHORT nameLen = context->fileName.Length;
+				USHORT len = sizeof(FileBackPortMsg) + nameLen;
+				auto msg = (FileBackPortMsg*)ExAllocatePoolWithTag(PagedPool, len, 0);
+				if (msg) 
+                {
+					msg->fileNameLen = nameLen / sizeof(WCHAR);
+					RtlCopyMemory(msg->fileName, context->fileName.Buffer, nameLen);
+
+					LARGE_INTEGER timeout;
+					timeout.QuadPart = -10000 * 100;	// 100msec
+					FltSendMessage(gFilterHandle, &SendClientPort, msg, len, nullptr, nullptr, &timeout);
+
+					ExFreePoolWithTag(msg, 0);
+				}
+			}
+        }
+
         context->write = true;
     }
 
@@ -858,6 +889,55 @@ Return Value:
     MiniFilter initialization and unload routines.
 *************************************************************************/
 
+NTSTATUS FLTAPI connectNotify (
+    _In_ PFLT_PORT ClientPort,
+    _In_opt_ PVOID ServerPortCookie,
+    _In_reads_bytes_opt_(SizeOfContext) PVOID ConnectionContext,
+    _In_ ULONG SizeOfContext,
+    _Outptr_result_maybenull_ PVOID* ConnectionPortCookie
+    )
+{
+	UNREFERENCED_PARAMETER(ServerPortCookie);
+	UNREFERENCED_PARAMETER(ConnectionContext);
+	UNREFERENCED_PARAMETER(SizeOfContext);
+	UNREFERENCED_PARAMETER(ConnectionPortCookie);
+
+
+	//ClientPort是指向客户端口的唯一句柄，驱动程序必须保存它，并且无论何时需要与客户程序通信都会用到它。
+    SendClientPort = ClientPort;
+
+    return STATUS_SUCCESS;
+}
+
+VOID FLTAPI disconnectNotify (
+    _In_opt_ PVOID ConnectionCookie
+    )
+{
+    UNREFERENCED_PARAMETER(ConnectionCookie);
+
+	FltCloseClientPort(gFilterHandle, &SendClientPort);
+	SendClientPort = nullptr;
+}
+
+NTSTATUS FLTAPI messageNotify (
+    _In_opt_ PVOID PortCookie,
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _Out_ PULONG ReturnOutputBufferLength
+    )
+{
+	UNREFERENCED_PARAMETER(PortCookie);
+	UNREFERENCED_PARAMETER(InputBuffer);
+	UNREFERENCED_PARAMETER(InputBufferLength);
+	UNREFERENCED_PARAMETER(OutputBuffer);
+	UNREFERENCED_PARAMETER(OutputBufferLength);
+	UNREFERENCED_PARAMETER(ReturnOutputBufferLength);
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 DriverEntry (
     _In_ PDRIVER_OBJECT DriverObject,
@@ -901,19 +981,43 @@ Return Value:
 
     FLT_ASSERT( NT_SUCCESS( status ) );
 
-    if (NT_SUCCESS( status )) {
-
-        //
-        //  Start filtering i/o
-        //
-
-        status = FltStartFiltering( gFilterHandle );
-
-        if (!NT_SUCCESS( status )) {
-
-            FltUnregisterFilter( gFilterHandle );
-        }
+    if (!NT_SUCCESS( status )) 
+    {
+        return status;
     }
+
+    do 
+    {
+        //创建通信端口
+        UNICODE_STRING portName = RTL_CONSTANT_STRING(L"\\FileBackPort");
+        OBJECT_ATTRIBUTES portAttr = { 0 };
+        PSECURITY_DESCRIPTOR sd;
+
+        status = FltBuildDefaultSecurityDescriptor(&sd, FLT_PORT_ALL_ACCESS);
+        if (!NT_SUCCESS(status))
+        {
+            break;
+        }
+
+        InitializeObjectAttributes(&portAttr, &portName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, nullptr, sd);
+
+        status = FltCreateCommunicationPort(gFilterHandle, &FilterPort, &portAttr, nullptr, connectNotify, disconnectNotify, messageNotify, 1);
+
+        FltFreeSecurityDescriptor(sd);
+
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+
+        status = FltStartFiltering(gFilterHandle);
+
+    } while (0);
+
+	if (!NT_SUCCESS(status)) 
+    {
+		FltUnregisterFilter(gFilterHandle);
+	}
 
     return status;
 }
@@ -947,6 +1051,9 @@ Return Value:
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
                   ("Chapter10FileBack!Chapter10FileBackUnload: Entered\n") );
+
+    //在过滤器的卸载例程中，我们必须关闭过滤器的通信端口
+    FltCloseCommunicationPort(FilterPort);
 
     FltUnregisterFilter( gFilterHandle );
 

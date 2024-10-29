@@ -337,17 +337,45 @@ ZwOpenSymbolicLinkObject  打开现有的符号链接
 
 ZwQuerySymbolicLinkObject  例程返回一个 Unicode 字符串，其中包含符号链接的目标。
 
-FltAllocateContext  
+FltAllocateContext  为指定的上下文类型分配上下文结构
 
-FltSetXxxContext
+FltSetXxxContext  设置上下文
 
-FltGetXxxContext
+FltGetXxxContext  获取上下文
 
-FltReleaseContext
+FltReleaseContext  释放上下文
 
 FltCreateFile   创建新文件或打开现有文件，防止了重入
 
-FltClose  
+FltClose  关闭句柄
+
+FltCreateCommunicationPort   创建一个过滤器通信端口
+
+FilterConnectCommunicationPort  连接到这个端口
+
+FltCloseClientPort  关闭客户端口
+
+FltSendMessage   向用户模式客户程序发送一条消息
+
+FilterGetMessage  等待消息到达
+
+FilterSendMessage   发送消息
+
+FilterReplyMessage  回复消息
+
+
+=================================================================================================
+
+.load fltkd  显式加载fltkd.dll，然后就可以直接用其中的命令了
+
+!filters	显示所有已装入的小过滤驱动的信息
+!filter		显示指定地址的小过滤驱动的信息
+!instance	显示指定地址的实例信息
+!volumes	显示所有卷对象
+!volume		显示指定地址的卷的详细信息
+!portlist	显示指定过滤的服务器端口列表
+!port		显示指定的客户端口信息
+
 
 fltmc load 驱动名 运行小过滤驱动
 fltmc unload 驱动名  卸载小过滤驱动
@@ -371,5 +399,9 @@ IoGetNextIrpStackLocation
 IoCopyCurrentIrpStackLocationToNext
 
 IoSkipCurrentIrpStackLocation
+
+IoSetCompletionRoutine 设置完成例程
+
+ObReferenceObjectByName 
 
 =================================================================================================
