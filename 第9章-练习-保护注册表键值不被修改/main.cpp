@@ -241,6 +241,8 @@ bool allowChange(PCUNICODE_STRING keyName, PUNICODE_STRING valueName)
 
 	DbgPrintEx(77, 0, "%ws == %ws \n", key, value);
 
+	//获取的注册表路径可能是 ControlSet001，但我们在注册表里操作的路径是 CurrentControlSet，这里需要注意下
+
 	for (ULONG i = 0; i < MAX_REG_PROTECT_NUMS; i++)
 	{
 		if (wcslen(g_RegProtect.regArrs[i].keyName) == 0)
