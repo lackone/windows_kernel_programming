@@ -45,6 +45,7 @@ int wmain(int argc, const wchar_t* argv[])
 
 	HKEY hKey;
 	LONG res = RegCreateKeyEx(HKEY_CURRENT_USER, L"aaa", 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &hKey, nullptr);
+
 	if (res == ERROR_SUCCESS)
 	{
 		CHAR* str = (CHAR*)"12345";
