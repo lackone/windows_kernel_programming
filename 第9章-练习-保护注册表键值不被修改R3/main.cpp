@@ -67,7 +67,7 @@ int wmain(int argc, const wchar_t* argv[])
 	{
 		RegItem item = { 0 };
 		wcscpy_s(item.keyName, 256, argv[2]);
-		wcscpy_s(item.valueName, argv[3]);
+		wcscpy_s(item.valueName, 256, argv[3]);
 
 		printf("%ws %ws \n", item.keyName, item.valueName);
 
